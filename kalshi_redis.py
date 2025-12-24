@@ -46,8 +46,8 @@ KALSHI_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
 # Sports series to fetch
 DEFAULT_SERIES = [
     "KXNFLGAME",
-    "KXNFSPREAD",
-    "KXNFLTOTOAL",
+    "KXNFLSPREAD",
+    "KXNFLTOTAL",
     "KXNBAGAME",
     "KXNBASPREAD",
     "KXNBATOTAL",
@@ -136,8 +136,9 @@ class RedisCache:
             "series_ticker": market_data.get("series_ticker", ""),
 
             # Team names
-            "yes_team": market_data.get("yes_sub_title", "YES"),
-            "no_team": market_data.get("no_sub_title", "NO"),
+            "team": market_data.get("yes_sub_title", ""),
+            "team_abbrev": ticker.split("-")[-1],
+            "matchup": market_data.get("title", "").replace(" Winner?", ""),
 
             # Prices (in cents)
             "yes_bid": market_data.get("yes_bid") or 0,
@@ -196,7 +197,7 @@ class RedisCache:
             })
 
         for price, qty in orderbook.get("no", []):
-            processed["no_bids"].apppend({
+            processed["no_bids"].append({
                 "price_cents": price,
                 "quantity": qty,
                 "liquidity_cents": price * qty
@@ -218,7 +219,7 @@ class RedisCache:
     
     def get_market(self, ticker: str) -> Optional[Dict[str, Any]]:
         """Get market data by ticker"""
-        key = f"{KEY_MARKET:{ticker}}"
+        key = f"{KEY_MARKET}:{ticker}"
         data = self.redis.hgetall(key)  
         if not data:
             return None
@@ -309,7 +310,7 @@ def fetch_and_cache(
 
                 # Fetch orderbook
                 try:
-                    ob_data = kalshi.get_orderboook(ticker) # type: ignore
+                    ob_data = kalshi.get_orderbook(ticker) # type: ignore
                     orderbook = ob_data.get("orderbook", {})
                 except Exception as e:
                     logger.warning(f"Could not get orderbook for {ticker}: {e}")
@@ -407,3 +408,6 @@ def main():
             sleep(args.interval)
         else:
             break
+
+if __name__ == "__main__":
+    main()
