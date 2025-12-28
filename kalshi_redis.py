@@ -40,6 +40,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+def cents_to_american(cents: int) -> int:
+    """
+    Convert Kalshi price (0-100 cents) to American odds.
+
+    cents = implied probability * 100
+
+    Examples:
+        61 cents (61%) -> -156
+        39 cents (39%) -> +156
+        50 cents (50%) -> -100/+100
+    """
+    if cents <= 0 or cents >= 100:
+        return 0
+     
+    prob = cents / 100
+
+    if prob >= 0.5:
+        # Favorite: negative odds
+        return int(-100 * prob / (1 - prob))
+    else:
+        # Underdog: positive odds
+        return int(100 * (1 - prob) / prob)
+
 # Kalshi API
 KALSHI_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
 
@@ -147,6 +170,12 @@ class RedisCache:
             "no_ask": market_data.get("no_ask") or 0,
             "last_price": market_data.get("last_price") or 0,
 
+            # American odds (converted from cents)
+            "yes_bid_american": cents_to_american(market_data.get("yes_bid") or 0),
+            "yes_ask_american": cents_to_american(market_data.get("yes_ask") or 0),
+            "no_bid_american": cents_to_american(market_data.get("no_bid") or 0),
+            "no_ask_american": cents_to_american(market_data.get("no_ask") or 0),
+
             # Volume 
             "volume": market_data.get("volume", 0),
             "volume_24th": market_data.get("volume_24h", 0),
@@ -189,16 +218,18 @@ class RedisCache:
             "no_bids": []
         }
 
-        for price, qty in orderbook.get("yes", []):
+        for price, qty in (orderbook.get("yes") or []):
             processed["yes_bids"].append({
                 "price_cents": price,
+                "price_american": cents_to_american(price),
                 "quantity": qty,
                 "liquidity_cents": price * qty
             })
 
-        for price, qty in orderbook.get("no", []):
+        for price, qty in (orderbook.get("no") or []):
             processed["no_bids"].append({
                 "price_cents": price,
+                "price_american": cents_to_american(price),
                 "quantity": qty,
                 "liquidity_cents": price * qty
             })
@@ -262,8 +293,8 @@ class RedisCache:
     
 def calculate_liquidity(orderbook: Dict[str, List]) -> Dict[str, int]:
     """Calculate total liquidity from orderbook"""
-    yes_bids = orderbook.get("yes", [])
-    no_bids = orderbook.get("no", [])
+    yes_bids = orderbook.get("yes") or []
+    no_bids = orderbook.get("no") or []
 
     yes_contracts = sum(qty for _, qty in yes_bids)
     yes_cents = sum(price * qty for price, qty in yes_bids)
