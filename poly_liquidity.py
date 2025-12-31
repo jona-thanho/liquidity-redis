@@ -97,7 +97,7 @@ KEY_LIQUIDITY_SUMMARY = f"{REDIS_PREFIX}:liquidity:summary"
 class PolymarketClient:
     """Polymarket API Client for Gamma (markets) and CLOB (orderbooks)"""
 
-    def __init__(self, rate_limit: float = 0.1):
+    def __init__(self, rate_limit: float = 0):
         self.session = requests.Session()
         self.session.headers["Accept"] = "application/json"
         self.rate_limit = rate_limit
@@ -569,7 +569,7 @@ def main():
                         help="Skip fetching orderbooks (faster)")
     parser.add_argument("--interval", type=int, default=None,
                         help="Refresh interval in seconds (runs once if not set)")
-    parser.add_argument("--rate-limit", type=float, default=0.1,
+    parser.add_argument("--rate-limit", type=float, default=0,
                         help="Seconds between API requests")
     args = parser.parse_args()
 
