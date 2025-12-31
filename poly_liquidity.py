@@ -4,7 +4,7 @@ Polymarket Liquidity -> Redis Cache
 Fetches liquidity and orderbook data from Polymarket and stores it in Redis for API consumption.
 
 Redis Key Structure:
-    polymarket:markets                      -> Set of all condiiton_ids
+    polymarket:markets                      -> Set of all condition_ids
     polymarket:market:{condition_id}        -> HASH with market data
     polymarket:market:{condition_id}:orderbook:yes -> JSON string with YES orderbook
     polymarket:market:{condition_id}:orderbook:no  -> JSON string with NO orderbook
@@ -19,15 +19,26 @@ Example usage:
     # Run every 30 seconds
     python polymarket_redis.py --interval 30
 
-    # Specific tag only
-    python polymarket_redis.py --tag-id 12345
-    NFL: --tag-id 450
-    NBA: --tag-id 745
-    MLB: --tag-id 100381
-    NHL: --tag-id 899
+    # Sports game lines only (moneyline, spreads, totals)
+    python polymarket_redis.py --sports-only
+
+    # Sports game lines, skip orderbooks for faster fetching
+    python polymarket_redis.py --sports-only --skip-orderbooks -- limit 100
+
+    # Specific tag only (includes futures, props, non-game markets)
+    python polymarket_redis.py --tag-id 450
+
+    Tag IDs:
+        450     - NFL (all NFL-related markets)
+        745     - NBA
+        899     - NHL
+        100639  - All Sports
 
     # Limit number of markets
     python polymarket_redis.py --limit 100
+
+    # Adjust rate limiting
+    python polymarket_redis.py --rate-limit 0.2
 
 Requirements:
     pip install redis requests
@@ -108,20 +119,21 @@ class PolymarketClient:
         sports_market_types: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """Fetch markets from Gamma API with pagination"""
-        params = {
-            "limit": limit,
-            "offset": offset,
-            "closed": str(closed).lower(),
-            "order": order,
-            "ascending": str(ascending).lower(),
-        }
+        params: List[tuple] = [
+            ("limit", limit),
+            ("offset", offset),
+            ("closed", str(closed).lower()),
+            ("order", order),
+            ("ascending", str(ascending).lower()),
+        ]
         if tag_id:
-            params["tag_id"] = tag_id
-        if sports_market_types:  
-            params["sports_market_types"] = sports_market_types
+            params.append(("tag_id", tag_id))
+        if sports_market_types:
+            for smt in sports_market_types:  
+                params.append(("sports_market_types", smt))
 
         url = f"{GAMMA_API_URL}/markets"
-        return self._get(url, params)
+        return self._get(url, params) # type: ignore
     
     def get_orderbook(self, token_id: str) -> Dict[str, Any]:
         """Fetch orderbook from CLOB API for a specific token"""
@@ -263,8 +275,14 @@ class RedisCache:
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
 
+        # Convert all values to strings for Redis (after building flat_data)
+        flat_data_clean: Dict[str, str] = {
+            k: "" if v is None else str(v)
+            for k, v in flat_data.items()
+        }
+
         # Store as hash
-        self.redis.hset(key, mapping=flat_data) # type: ignore
+        self.redis.hset(key, mapping=flat_data_clean) # type: ignore
         self.redis.expire(key, self.ttl)
 
         # Add to markets set
